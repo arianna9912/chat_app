@@ -1,159 +1,177 @@
 <template>
-  <v-app>
-    <v-app-bar color="indigo-darken-4" density="compact">
-      <v-app-bar-title class="font animated" flat>
-        <a class="whatsapp-link" @click="openWhatsApp()">📩chat@pp</a>
-      </v-app-bar-title>
+  <!-- Loading -->
+  <div v-if="!authLoaded" class="app-loading">
+    <div class="app-spinner"></div>
+    <span>Cargando...</span>
+  </div>
 
-      <v-btn class="font" prepend-icon="mdi-account" flat color="white" @click="googleAccess" v-if="!userGoogle">
-        Sign in
-      </v-btn>
-      <v-btn class="font" prepend-icon="mdi-account" flat color="white" @click="logout" v-if="userGoogle">
-        Log out
-      </v-btn>
-    </v-app-bar>
+  <!-- Login -->
+  <AuthScreen v-else-if="!userGoogle" />
 
-    <v-navigation-drawer v-if="userGoogle" app left width="340">
+  <!-- Chat -->
+  <div v-else class="app-chat">
+    <div class="side-desktop">
+      <Conversations :active-id="activeConversation ? activeConversation.id : ''" @open="handleOpen" />
+    </div>
+
+    <div v-if="mobileOpen" class="overlay" @click="mobileOpen = false"></div>
+    <div v-if="mobileOpen" class="side-mobile">
       <Conversations
         :active-id="activeConversation ? activeConversation.id : ''"
+        is-mobile
         @open="handleOpen"
+        @close="mobileOpen = false"
       />
-    </v-navigation-drawer>
+    </div>
 
-    <v-main app>
-      <v-container>
-        <div v-if="userGoogle === null" class="progress-container">
-          <v-progress-circular v-if="userGoogle === null" indeterminate color="deep-purple-lighten-3">
-            Loading
-          </v-progress-circular>
-        </div>
-
-        <template v-else-if="userGoogle">
-          <Messages
-            v-if="activeConversation"
-            :conversation-id="activeConversation.id"
-            :other="activeConversation.other"
-          />
-          <div v-else class="text-center mt-12 font" style="color: #94a3b8">
-            <v-icon size="72" color="indigo-darken-2">mdi-chat-outline</v-icon>
-            <p class="mt-3">Selecciona un usuario o una conversación</p>
-            <p class="text-caption">para empezar a chatear en privado</p>
-          </div>
-        </template>
-
-        <div v-else>
-          <v-alert v-if="!userGoogle && showAlert" type="error" class="text-center mt-5 chat-background" @click="closeAlert">
-            Debes iniciar sesión para acceder al chat
-          </v-alert>
-        </div>
-      </v-container>
-    </v-main>
-
-    <v-footer v-if="userGoogle && activeConversation" app>
-      <FormAdd :conversation-id="activeConversation.id" />
-    </v-footer>
-  </v-app>
+    <Messages
+      v-if="activeConversation"
+      :conversation-id="activeConversation.id"
+      :other="activeConversation.other"
+      @open-drawer="mobileOpen = true"
+    />
+    <div v-else class="app-placeholder">
+      <i class="mdi mdi-chat-plus-outline"></i>
+      <p>Selecciona un usuario o una conversación</p>
+      <p class="app-placeholder-sub">para empezar a chatear en privado</p>
+    </div>
+  </div>
 </template>
 
 <script setup>
-import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { auth, db } from "./firebase";
-import Conversations from "./components/Conversations.vue";
-import Messages from "./components/Messages.vue";
-import FormAdd from "./components/FormAdd.vue";
-import { ref } from "vue";
+import { ref } from 'vue'
+import { onAuthStateChanged } from 'firebase/auth'
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { auth, db } from './firebase'
+import AuthScreen from './components/AuthScreen.vue'
+import Conversations from './components/Conversations.vue'
+import Messages from './components/Messages.vue'
 
-const showAlert = ref(true);
-const userGoogle = ref(null);
-const activeConversation = ref(null);
-
-const closeAlert = () => {
-  showAlert.value = false;
-};
-
-const googleAccess = async () => {
-  try {
-    const provider = new GoogleAuthProvider();
-    const { user } = await signInWithPopup(auth, provider);
-    console.log(user);
-  } catch (error) {
-    console.log(error);
-  }
-};
-
-const logout = async () => {
-  await signOut(auth);
-};
+const userGoogle = ref(null)
+const authLoaded = ref(false)
+const mobileOpen = ref(false)
+const activeConversation = ref(null)
 
 const handleOpen = ({ id, other }) => {
-  activeConversation.value = { id, other };
-};
+  activeConversation.value = { id, other }
+  mobileOpen.value = false
+}
 
 onAuthStateChanged(auth, async (user) => {
-  userGoogle.value = user;
+  userGoogle.value = user
+  authLoaded.value = true
   if (user) {
     try {
       await setDoc(
-        doc(db, "users", user.uid),
+        doc(db, 'users', user.uid),
         {
           uid: user.uid,
           displayName: user.displayName || user.email,
           email: user.email,
-          photoURL: user.photoURL || "",
+          photoURL: user.photoURL || '',
           lastSeen: serverTimestamp(),
         },
         { merge: true }
-      );
+      )
     } catch (error) {
-      console.error("Error registrando usuario:", error);
+      console.error('Error registrando usuario:', error)
     }
   }
-});
-
-const openWhatsApp = () => {
-  window.location.href = "whatsapp://send?phone=+5352740178";
-};
+})
 </script>
 
 <style>
-.progress-container {
+.app-loading {
+  min-height: 100vh;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
   align-items: center;
-  margin-top: 5px;
+  justify-content: center;
+  gap: 14px;
+  color: var(--muted-foreground);
+  font-family: 'Inter', sans-serif;
 }
 
-.font {
-  font-family: "Libre Baskerville", serif;
-  font-weight: 200;
+.app-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--secondary);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 
-.animated {
-  animation: jump 1s infinite;
-}
-
-@keyframes jump {
-  0% {
-    transform: translateY(0);
-  }
-
-  50% {
-    transform: translateY(-5px);
-  }
-
-  100% {
-    transform: translateY(0);
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
-.whatsapp-link {
-  color: white;
-  text-decoration: none;
-  cursor: pointer;
+.app-chat {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--background);
 }
 
-.chat-background {
-  background: transparent;
+.side-desktop {
+  display: none;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(4px);
+  z-index: 40;
+}
+
+.side-mobile {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 50;
+  height: 100vh;
+  animation: slide-in-left 0.3s ease-out;
+}
+
+@keyframes slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.app-placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--muted-foreground);
+}
+
+.app-placeholder .mdi {
+  font-size: 72px;
+  color: var(--primary);
+}
+
+.app-placeholder p {
+  font-size: 15px;
+  font-weight: 500;
+  margin: 16px 0 0;
+}
+
+.app-placeholder-sub {
+  font-size: 13px;
+  margin: 4px 0 0;
+}
+
+@media (min-width: 768px) {
+  .side-desktop {
+    display: block;
+  }
 }
 </style>

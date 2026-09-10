@@ -1,16 +1,24 @@
-# chat@pp — Chat privado
+# Friendzy — Chat privado
 
-Chat privado 1-a-1 construido con **Vue 3**, **Vuetify**, **Vite** y **Firebase (Auth + Firestore)**.
+Chat privado 1-a-1 con el diseño **blanco y naranja** de "Friendzy" (login split + chat moderno), construido con **Vue 3**, **Vite** y **Firebase (Auth + Firestore)**.
 
 ## Funcionalidades
 
-- Inicio de sesión con Google
+- Pantalla de login/landing (panel naranja con gradiente + panel blanco con card de login)
+- Inicio de sesión con **Google** o con **email y contraseña** (+ registro)
 - Chat **privado** entre dos usuarios (mensajes 1-a-1, no es un chat grupal)
+- Sidebar con perfil, buscador de conversaciones y selector de usuarios (nuevo chat)
+- Burbujas de mensaje con avatares e indicador de estado, hora y visto
+- Envío de mensajes de texto o **imágenes**
 - Registro automático de cada usuario que inicia sesión
-- Lista de conversaciones con previsualización del último mensaje
-- Lista de usuarios para iniciar un chat nuevo
-- Ordenamiento de conversaciones por actividad reciente
 - Datos en tiempo real (Firestore `onSnapshot`)
+
+## Requisito de Firebase
+
+En **Firebase Console → Authentication → Sign-in method**, asegúrate de tener habilitados:
+
+- **Google**
+- **Email/Password** (necesario para el login con email)
 
 ## Arquitectura en Firestore
 
@@ -23,8 +31,14 @@ conversations/{conversationId}       → una conversación por pareja de usuario
   // conversationId = min(uidA, uidB) + "_" + max(uidA, uidB), es determinístico
 
 conversations/{conversationId}/messages/{messageId}
-  { text, time, uid, displayName }
+  { text?, image?, time, uid, displayName }
 ```
+
+Los mensajes con imagen guardan la imagen como `dataURL` en el campo `image`.
+Los mensajes de texto usan el campo `text`.
+
+El `conversationId` se calcula con `min(uidA, uidB) + "_" + max(uidA, uidB)`,
+por lo que cada pareja de usuarios tiene siempre la misma conversación.
 
 ## Reglas de seguridad recomendadas (Firestore)
 
@@ -68,6 +82,6 @@ npm run dev
 ## Stack
 
 - Vue 3
-- Vuetify 3
+- Vuetify 3 (tema blanco + naranja)
 - Vite
 - Firebase (Auth + Firestore)

@@ -5,6 +5,24 @@ import 'vuetify/styles'
 // Vuetify
 import { createVuetify } from 'vuetify'
 
-export default createVuetify(
-  // https://vuetifyjs.com/en/introduction/why-vuetify/#feature-guides
-)
+export default createVuetify({
+  theme: {
+    defaultTheme: 'light',
+    themes: {
+      light: {
+        dark: false,
+        colors: {
+          primary: '#FF6A00',
+          secondary: '#F7F7F7',
+          accent: '#FFB27D',
+          error: '#EF4444',
+          info: '#0EA5E9',
+          success: '#22C55E',
+          warning: '#F59E0B',
+          background: '#FFFFFF',
+          surface: '#FFFFFF',
+        },
+      },
+    },
+  },
+})
