@@ -26,6 +26,9 @@ En **Firebase Console → Authentication → Sign-in method**, asegúrate de ten
 users/{uid}                          → perfil público de cada usuario
   { uid, displayName, email, photoURL, lastSeen }
 
+requests/{fromUid}_{toUid}           → solicitud de chat entre dos usuarios
+  { from, to, status: 'pending'|'accepted', createdAt }
+
 conversations/{conversationId}       → una conversación por pareja de usuarios
   { participants: [uidA, uidB], lastMessage, lastAt }
   // conversationId = min(uidA, uidB) + "_" + max(uidA, uidB), es determinístico
@@ -33,6 +36,12 @@ conversations/{conversationId}       → una conversación por pareja de usuario
 conversations/{conversationId}/messages/{messageId}
   { text?, image?, time, uid, displayName }
 ```
+
+Flujo de amistad:
+1. Todos los usuarios registrados aparecen en el botón `+` (o con el buscador).
+2. Con el botón **Solicitar** se envía una solicitud de chat (doc en `requests/`).
+3. El destinatario la ve en la sección **Solicitudes** y la **Acepta** o la **Rechaza**.
+4. Al aceptar, la otra persona pasa a la lista de **Amigos** y se abre la conversación.
 
 Los mensajes con imagen guardan la imagen como `dataURL` en el campo `image`.
 Los mensajes de texto usan el campo `text`.
@@ -56,6 +65,15 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /requests/{requestId} {
+      allow read: if request.auth != null &&
+        (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+      allow create: if request.auth != null &&
+        request.resource.data.from == request.auth.uid && request.resource.data.to != request.auth.uid;
+      allow update, delete: if request.auth != null &&
+        (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
     }
 
     match /conversations/{conversationId} {

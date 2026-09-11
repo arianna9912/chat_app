@@ -49,23 +49,33 @@
 
       <div v-if="addOpen" class="sb-newchat">
         <div class="sb-label">
-          <i class="mdi mdi-account-plus-outline"></i>
+          <i class="mdi mdi-account-multiple-outline"></i>
           <span>Personas registradas</span>
         </div>
         <button
           v-for="u in searchUsers"
           :key="u.uid"
           class="sb-user-item"
-          @click="startWith(u)"
+          @click="onUserClick(u)"
         >
           <PremiumAvatar :src="u.photoURL || ''" :name="u.displayName" size="md" :online="true" />
           <div class="sb-user-body">
             <span class="sb-user-name">{{ u.displayName }}</span>
             <span class="sb-user-email">{{ u.email }}</span>
           </div>
-          <button class="add-btn" :class="{ added: isFriend(u) }" @click.stop="toggleFriend(u)">
-            <i :class="['mdi', isFriend(u) ? 'mdi-check' : 'mdi-account-plus']"></i>
-          </button>
+          <span
+            v-if="statusOf(u) !== 'friend'"
+            class="btn-status"
+            :class="'btn-' + statusOf(u)"
+            @click.stop="onStatusAction(u)"
+          >
+            <i :class="['mdi', statusIcon(statusOf(u))]"></i>
+            <span>{{ statusLabel(statusOf(u)) }}</span>
+          </span>
+          <span v-else class="btn-status btn-friend" @click.stop="startWith(u)">
+            <i class="mdi mdi-message-outline"></i>
+            <span>Chat</span>
+          </span>
         </button>
         <p v-if="searchUsers.length === 0" class="sb-empty-note">
           No hay personas registradas
@@ -73,37 +83,74 @@
       </div>
     </div>
 
-    <!-- Amigos -->
-    <div v-if="friendsUsers.length" class="sb-section">
-      <div class="sb-label">
-        <i class="mdi mdi-heart"></i>
-        <span>Amigos</span>
-      </div>
-      <span class="sb-count">{{ friendsUsers.length }}</span>
-    </div>
-    <div v-if="friendsUsers.length" class="sb-list sb-friends">
-      <div
-        v-for="u in friendsUsers"
-        :key="u.uid"
-        class="conv-item friend-item"
-        @click="startWith(u)"
-      >
-        <PremiumAvatar :src="u.photoURL || ''" :name="u.displayName" size="lg" online />
-        <div class="conv-body">
-          <div class="conv-top">
-            <span class="conv-name">{{ u.displayName }}</span>
-          </div>
-          <div class="conv-bottom">
-            <span class="conv-preview">En línea</span>
-          </div>
+    <!-- Solicitudes recibidas -->
+    <template v-if="incomingPending.length">
+      <div class="sb-section">
+        <div class="sb-label">
+          <i class="mdi mdi-bell-outline"></i>
+          <span>Solicitudes</span>
         </div>
-        <button class="friend-remove" @click.stop="removeFriend(u)">
-          <i class="mdi mdi-minus"></i>
-        </button>
+        <span class="sb-count sb-count-alert">{{ incomingPending.length }}</span>
       </div>
-    </div>
+      <div class="sb-list sb-friends">
+        <div v-for="r in incomingPending" :key="r.id" class="conv-item friend-item">
+          <PremiumAvatar
+            :src="userOf(r.from)?.photoURL || ''"
+            :name="userOf(r.from)?.displayName || r.from"
+            size="lg"
+            online
+          />
+          <div class="conv-body">
+            <div class="conv-top">
+              <span class="conv-name">{{ userOf(r.from)?.displayName || r.from }}</span>
+            </div>
+            <div class="conv-bottom">
+              <span class="conv-preview">Quiere chatear contigo</span>
+            </div>
+          </div>
+          <button class="req-btn req-ok" title="Aceptar" @click="acceptRequest(r)">
+            <i class="mdi mdi-check"></i>
+          </button>
+          <button class="req-btn req-no" title="Rechazar" @click="rejectRequest(r)">
+            <i class="mdi mdi-close"></i>
+          </button>
+        </div>
+      </div>
+    </template>
 
-    <!-- Section header Conversaciones -->
+    <!-- Amigos -->
+    <template v-if="contactUsers.length">
+      <div class="sb-section">
+        <div class="sb-label">
+          <i class="mdi mdi-heart"></i>
+          <span>Amigos</span>
+        </div>
+        <span class="sb-count">{{ contactUsers.length }}</span>
+      </div>
+      <div class="sb-list sb-friends">
+        <div
+          v-for="u in contactUsers"
+          :key="u.uid"
+          class="conv-item friend-item"
+          @click="startWith(u)"
+        >
+          <PremiumAvatar :src="u.photoURL || ''" :name="u.displayName" size="lg" online />
+          <div class="conv-body">
+            <div class="conv-top">
+              <span class="conv-name">{{ u.displayName }}</span>
+            </div>
+            <div class="conv-bottom">
+              <span class="conv-preview">En línea</span>
+            </div>
+          </div>
+          <button class="friend-remove" @click.stop="unfriend(u)">
+            <i class="mdi mdi-minus"></i>
+          </button>
+        </div>
+      </div>
+    </template>
+
+    <!-- Conversaciones -->
     <div class="sb-section">
       <div class="sb-label">
         <i class="mdi mdi-message-text-outline"></i>
@@ -112,7 +159,6 @@
       <span class="sb-count">{{ filteredConversations.length }}</span>
     </div>
 
-    <!-- Chat List -->
     <div class="sb-list">
       <button
         v-for="c in filteredConversations"
@@ -135,7 +181,7 @@
 
       <div v-if="filteredConversations.length === 0" class="sb-empty">
         <p>Sin conversaciones todavía</p>
-        <p class="sb-empty-sub">Usa el botón + para empezar un chat</p>
+        <p class="sb-empty-sub">Busca personas y envía una solicitud para chatear</p>
       </div>
     </div>
   </div>
@@ -145,8 +191,8 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { db, auth } from '../firebase'
 import {
-  collection, query, onSnapshot, doc, setDoc, getDoc,
-  serverTimestamp, arrayUnion, arrayRemove,
+  collection, query, onSnapshot, doc, setDoc, getDoc, deleteDoc,
+  serverTimestamp, arrayUnion, arrayRemove, where,
 } from 'firebase/firestore'
 import { signOut } from 'firebase/auth'
 import { getConversationId, otherParticipantUid } from '../utils/chat'
@@ -163,6 +209,11 @@ const currentUser = auth.currentUser
 const users = ref([])
 const conversations = ref([])
 const myFriends = ref([])
+const incomingReq = ref([])
+const sentReq = ref([])
+const acceptedIn = ref([])
+const acceptedOut = ref([])
+const acceptedReq = ref([])
 const searchQuery = ref('')
 const profileOpen = ref(false)
 const addOpen = ref(false)
@@ -174,6 +225,10 @@ const userPhoto = currentUser?.photoURL || ''
 let unsubUsers = null
 let unsubConvs = null
 let unsubMe = null
+let unsubIncoming = null
+let unsubSent = null
+let unsubAccepted = null
+let unsubAcceptedIn = null
 let closeHandler = null
 
 onMounted(() => {
@@ -184,7 +239,7 @@ onMounted(() => {
   })
 
   unsubConvs = onSnapshot(
-    query(collection(db, 'conversations')).where('participants', 'array-contains', currentUser.uid),
+    query(collection(db, 'conversations'), where('participants', 'array-contains', currentUser.uid)),
     (snap) => {
       conversations.value = snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
@@ -195,6 +250,36 @@ onMounted(() => {
   unsubMe = onSnapshot(doc(db, 'users', currentUser.uid), (d) => {
     myFriends.value = d.data()?.friends || []
   })
+
+  unsubIncoming = onSnapshot(
+    query(collection(db, 'requests'), where('to', '==', currentUser.uid), where('status', '==', 'pending')),
+    (snap) => {
+      incomingReq.value = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    }
+  )
+
+  unsubSent = onSnapshot(
+    query(collection(db, 'requests'), where('from', '==', currentUser.uid), where('status', '==', 'pending')),
+    (snap) => {
+      sentReq.value = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    }
+  )
+
+  unsubAccepted = onSnapshot(
+    query(collection(db, 'requests'), where('from', '==', currentUser.uid), where('status', '==', 'accepted')),
+    (snap) => {
+      acceptedOut.value = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      mergeAccepted()
+    }
+  )
+
+  unsubAcceptedIn = onSnapshot(
+    query(collection(db, 'requests'), where('to', '==', currentUser.uid), where('status', '==', 'accepted')),
+    (snap) => {
+      acceptedIn.value = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      mergeAccepted()
+    }
+  )
 
   closeHandler = (e) => {
     if (!e.target.closest('.sb-profile-wrap')) profileOpen.value = false
@@ -207,8 +292,102 @@ onUnmounted(() => {
   unsubUsers?.()
   unsubConvs?.()
   unsubMe?.()
+  unsubIncoming?.()
+  unsubSent?.()
+  unsubAccepted?.()
+  unsubAcceptedIn?.()
   if (closeHandler) document.removeEventListener('click', closeHandler)
 })
+
+const mergeAccepted = () => {
+  acceptedReq.value = [...acceptedIn.value, ...acceptedOut.value]
+}
+
+const userOf = (uid) => users.value.find((u) => u.uid === uid)
+
+const incomingPending = computed(() => incomingReq.value)
+const contactUids = computed(() => {
+  const set = new Set(myFriends.value)
+  acceptedReq.value.forEach((r) => {
+    set.add(r.from === currentUser.uid ? r.to : r.from)
+  })
+  return set
+})
+
+const contactUsers = computed(() => users.value.filter((u) => contactUids.value.has(u.uid)))
+
+const sentPendingTo = computed(() => new Set(sentReq.value.map((r) => r.to)))
+
+const statusOf = (u) => {
+  if (contactUids.value.has(u.uid)) return 'friend'
+  if (sentPendingTo.value.has(u.uid)) return 'pending'
+  if (incomingPending.value.some((r) => r.from === u.uid)) return 'incoming'
+  return 'none'
+}
+
+const statusLabel = (s) =>
+  s === 'pending' ? 'Pendiente' : s === 'incoming' ? 'Aceptar' : 'Solicitar'
+
+const statusIcon = (s) =>
+  s === 'pending' ? 'mdi-clock-outline' : s === 'incoming' ? 'mdi-check' : 'mdi-account-plus-outline'
+
+const onUserClick = (u) => {
+  if (statusOf(u) === 'friend') startWith(u)
+}
+
+const onStatusAction = (u) => {
+  const s = statusOf(u)
+  if (s === 'incoming') {
+    const r = incomingPending.value.find((x) => x.from === u.uid)
+    if (r) acceptRequest(r)
+  } else if (s === 'none') {
+    sendRequest(u)
+  }
+}
+
+const sendRequest = async (u) => {
+  const id = `${currentUser.uid}_${u.uid}`
+  await setDoc(doc(db, 'requests', id), {
+    from: currentUser.uid,
+    to: u.uid,
+    status: 'pending',
+    createdAt: serverTimestamp(),
+  })
+}
+
+const acceptRequest = async (r) => {
+  const reqRef = doc(db, 'requests', r.id)
+  const userRef = doc(db, 'users', currentUser.uid)
+  await setDoc(reqRef, { status: 'accepted' }, { merge: true })
+  await setDoc(userRef, { friends: arrayUnion(r.from) }, { merge: true })
+  const other = users.value.find((u) => u.uid === r.from)
+  await startWith({
+    uid: r.from,
+    displayName: other?.displayName || r.from,
+    photoURL: other?.photoURL || '',
+  })
+}
+
+const rejectRequest = async (r) => {
+  await deleteDoc(doc(db, 'requests', r.id))
+}
+
+const unfriend = async (u) => {
+  const userRef = doc(db, 'users', currentUser.uid)
+  await setDoc(userRef, { friends: arrayRemove(u.uid) }, { merge: true })
+  const inRef = doc(db, 'requests', `${u.uid}_${currentUser.uid}`)
+  const inSnap = await getDoc(inRef)
+  if (inSnap.exists()) {
+    if (inSnap.data().from === u.uid && inSnap.data().to === currentUser.uid) {
+      await deleteDoc(inRef)
+    }
+  }
+  const outRef = doc(db, 'requests', `${currentUser.uid}_${u.uid}`)
+  const outSnap = await getDoc(outRef)
+  if (outSnap.exists()) {
+    await setDoc(outRef, { status: 'declined' }, { merge: true })
+  }
+}
 
 const otherName = (c) => {
   const uid = otherParticipantUid(c.id, currentUser.uid)
@@ -236,10 +415,6 @@ const searchUsers = computed(() => {
   }
   return list
 })
-
-const friendsUsers = computed(() => users.value.filter((u) => myFriends.value.includes(u.uid)))
-
-const isFriend = (u) => myFriends.value.includes(u.uid)
 
 const relTime = (ts) => {
   const ms = ts?.toMillis?.() ?? 0
@@ -273,19 +448,6 @@ const startWith = async (u) => {
   }
   addOpen.value = false
   emit('open', { id, other: { name: u.displayName, photo: u.photoURL || '' } })
-}
-
-const toggleFriend = async (u) => {
-  const ref = doc(db, 'users', currentUser.uid)
-  if (isFriend(u)) {
-    await setDoc(ref, { friends: arrayRemove(u.uid) }, { merge: true })
-  } else {
-    await setDoc(ref, { friends: arrayUnion(u.uid) }, { merge: true })
-  }
-}
-
-const removeFriend = async (u) => {
-  await setDoc(doc(db, 'users', currentUser.uid), { friends: arrayRemove(u.uid) }, { merge: true })
 }
 
 const logout = async () => {
@@ -544,29 +706,46 @@ const logout = async () => {
   color: var(--muted-foreground);
 }
 
-.add-btn {
-  display: flex;
+.btn-status {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 50%;
-  background: var(--secondary);
-  color: var(--muted-foreground);
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #fff;
+  background: var(--primary);
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.15s ease, color 0.15s ease;
+  border: none;
+  transition: filter 0.15s ease, opacity 0.15s ease;
 }
 
-.add-btn:hover {
-  background: var(--primary);
-  color: #fff;
+.btn-status:hover {
+  filter: brightness(1.08);
 }
 
-.add-btn.added {
+.btn-status .mdi {
+  font-size: 13px;
+}
+
+.btn-pending {
+  background: var(--muted-foreground);
+  cursor: default;
+}
+
+.btn-pending:hover {
+  filter: none;
+}
+
+.btn-incoming {
   background: #22c55e;
-  color: #fff;
+}
+
+.btn-friend {
+  background: var(--secondary);
+  color: var(--foreground);
 }
 
 .sb-empty-note {
@@ -607,6 +786,11 @@ const logout = async () => {
   border-radius: 4px;
 }
 
+.sb-count-alert {
+  color: #fff;
+  background: var(--primary);
+}
+
 /* Lists */
 .sb-list {
   flex: 1;
@@ -616,7 +800,7 @@ const logout = async () => {
 
 .sb-friends {
   flex: none;
-  max-height: 210px;
+  max-height: 200px;
 }
 
 .conv-item {
@@ -683,6 +867,33 @@ const logout = async () => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.req-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.1s ease;
+}
+
+.req-btn:active {
+  transform: scale(0.9);
+}
+
+.req-ok {
+  background: #22c55e;
+  color: #fff;
+}
+
+.req-no {
+  background: var(--destructive);
+  color: #fff;
 }
 
 .friend-remove {
