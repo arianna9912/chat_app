@@ -194,7 +194,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { db, auth } from '../firebase'
 import {
-  collection, query, onSnapshot, doc, setDoc, getDoc, deleteDoc, updateDoc,
+  collection, query, onSnapshot, doc, setDoc, getDoc, deleteDoc,
   serverTimestamp, arrayUnion, arrayRemove, where,
 } from 'firebase/firestore'
 import { signOut } from 'firebase/auth'
@@ -362,7 +362,7 @@ const mergeAccepted = () => {
 }
 
 const markRead = (id) => {
-  updateDoc(doc(db, 'conversations', id), { [`unread.${currentUser.uid}`]: 0 }).catch(() => {})
+  setDoc(doc(db, 'conversations', id), { [`unread.${currentUser.uid}`]: 0 }, { merge: true }).catch(() => {})
 }
 
 const userOf = (uid) => users.value.find((u) => u.uid === uid)
@@ -418,24 +418,16 @@ const sendRequest = async (u) => {
 }
 
 const acceptRequest = async (r) => {
-  try {
-    const reqRef = doc(db, 'requests', r.id)
-    const userRef = doc(db, 'users', currentUser.uid)
-    console.log('chatflow:accept->setStatus')
-    await setDoc(reqRef, { status: 'accepted' }, { merge: true })
-    console.log('chatflow:accept->friends')
-    await setDoc(userRef, { friends: arrayUnion(r.from) }, { merge: true })
-    console.log('chatflow:accept->startWith')
-    const other = users.value.find((u) => u.uid === r.from)
-    await startWith({
-      uid: r.from,
-      displayName: other?.displayName || r.from,
-      photoURL: other?.photoURL || '',
-    })
-    console.log('chatflow:accept->OK')
-  } catch (e) {
-    console.error('chatflow:accept->ERROR', e.code, e.message)
-  }
+  const reqRef = doc(db, 'requests', r.id)
+  const userRef = doc(db, 'users', currentUser.uid)
+  await setDoc(reqRef, { status: 'accepted' }, { merge: true })
+  await setDoc(userRef, { friends: arrayUnion(r.from) }, { merge: true })
+  const other = users.value.find((u) => u.uid === r.from)
+  await startWith({
+    uid: r.from,
+    displayName: other?.displayName || r.from,
+    photoURL: other?.photoURL || '',
+  })
 }
 
 const rejectRequest = async (r) => {
@@ -508,22 +500,8 @@ const openConversation = (c) => {
 
 const startWith = async (u) => {
   const id = getConversationId(currentUser.uid, u.uid)
-  const conversationRef = doc(db, 'conversations', id)
-  console.log('chatflow:start->get', id)
-  const snap = await getDoc(conversationRef)
-  console.log('chatflow:start->getDone', snap.exists())
-  if (!snap.exists()) {
-    console.log('chatflow:start->create')
-    await setDoc(conversationRef, {
-      participants: arrayUnion(currentUser.uid, u.uid),
-      lastAt: serverTimestamp(),
-      lastMessage: '',
-    })
-    console.log('chatflow:start->created')
-  }
   addOpen.value = false
   markRead(id)
-  console.log('chatflow:start->emit')
   emit('open', { id, other: { name: u.displayName, photo: u.photoURL || '' } })
 }
 
