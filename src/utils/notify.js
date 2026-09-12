@@ -48,7 +48,6 @@ export function ensurePermission() {
 }
 
 export function notify(title, body) {
-  console.log('dbg:notify', title, body)
   if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
     try {
       new Notification(title, { body, icon: '/chat_app/favicon.ico' })

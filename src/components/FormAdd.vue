@@ -64,7 +64,7 @@
 
 <script setup>
 import { ref, nextTick } from 'vue'
-import { collection, doc, Timestamp, writeBatch, increment, arrayUnion } from 'firebase/firestore'
+import { collection, doc, Timestamp, writeBatch, setDoc, increment, arrayUnion } from 'firebase/firestore'
 import { auth, db } from '../firebase'
 import { otherParticipantUid } from '../utils/chat'
 
@@ -92,8 +92,11 @@ const send = async () => {
   try {
     const user = auth.currentUser
     const otherUid = otherParticipantUid(props.conversationId, user.uid)
-    const batch = writeBatch(db)
+    const convRef = doc(db, 'conversations', props.conversationId)
 
+    await setDoc(convRef, { participants: arrayUnion(user.uid, otherUid) }, { merge: true })
+
+    const batch = writeBatch(db)
     const msgRef = doc(collection(db, 'conversations', props.conversationId, 'messages'))
     batch.set(msgRef, {
       text,
@@ -102,16 +105,11 @@ const send = async () => {
       displayName: user.displayName,
     })
 
-    batch.set(
-      doc(db, 'conversations', props.conversationId),
-      {
-        participants: arrayUnion(user.uid, otherUid),
-        lastMessage: text,
-        lastAt: Timestamp.fromDate(new Date()),
-        [`unread.${otherUid}`]: increment(1),
-      },
-      { merge: true }
-    )
+    batch.update(convRef, {
+      lastMessage: text,
+      lastAt: Timestamp.fromDate(new Date()),
+      [`unread.${otherUid}`]: increment(1),
+    })
 
     await batch.commit()
     message.value = ''
@@ -136,8 +134,11 @@ const handleImage = async (e) => {
     try {
       const user = auth.currentUser
       const otherUid = otherParticipantUid(props.conversationId, user.uid)
-      const batch = writeBatch(db)
+      const convRef = doc(db, 'conversations', props.conversationId)
 
+      await setDoc(convRef, { participants: arrayUnion(user.uid, otherUid) }, { merge: true })
+
+      const batch = writeBatch(db)
       const msgRef = doc(collection(db, 'conversations', props.conversationId, 'messages'))
       batch.set(msgRef, {
         image: reader.result,
@@ -147,16 +148,11 @@ const handleImage = async (e) => {
         displayName: user.displayName,
       })
 
-      batch.set(
-        doc(db, 'conversations', props.conversationId),
-        {
-          participants: arrayUnion(user.uid, otherUid),
-          lastMessage: '📷 Foto',
-          lastAt: Timestamp.fromDate(new Date()),
-          [`unread.${otherUid}`]: increment(1),
-        },
-        { merge: true }
-      )
+      batch.update(convRef, {
+        lastMessage: '📷 Foto',
+        lastAt: Timestamp.fromDate(new Date()),
+        [`unread.${otherUid}`]: increment(1),
+      })
 
       await batch.commit()
     } catch (error) {
