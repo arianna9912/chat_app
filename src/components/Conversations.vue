@@ -194,7 +194,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { db, auth } from '../firebase'
 import {
-  collection, query, onSnapshot, doc, setDoc, getDoc, deleteDoc,
+  collection, query, onSnapshot, doc, setDoc, getDoc, deleteDoc, updateDoc,
   serverTimestamp, arrayUnion, arrayRemove, where,
 } from 'firebase/firestore'
 import { signOut } from 'firebase/auth'
