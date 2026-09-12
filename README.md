@@ -30,8 +30,9 @@ requests/{fromUid}_{toUid}           → solicitud de chat entre dos usuarios
   { from, to, status: 'pending'|'accepted', createdAt }
 
 conversations/{conversationId}       → una conversación por pareja de usuarios
-  { participants: [uidA, uidB], lastMessage, lastAt }
+  { participants: [uidA, uidB], lastMessage, lastAt, unread.{uid} }
   // conversationId = min(uidA, uidB) + "_" + max(uidA, uidB), es determinístico
+  // se crea automáticamente al enviar el primer mensaje
 
 conversations/{conversationId}/messages/{messageId}
   { text?, image?, time, uid, displayName }
@@ -41,7 +42,9 @@ Flujo de amistad:
 1. Todos los usuarios registrados aparecen en el botón `+` (o con el buscador).
 2. Con el botón **Solicitar** se envía una solicitud de chat (doc en `requests/`).
 3. El destinatario la ve en la sección **Solicitudes** y la **Acepta** o la **Rechaza**.
-4. Al aceptar, la otra persona pasa a la lista de **Amigos** y se abre la conversación.
+4. Al aceptar, la otra persona pasa a la lista de **Amigos** y se abre la conversación
+   (el documento de la conversación se crea automáticamente al enviar el
+   primer mensaje).
 
 Los mensajes con imagen guardan la imagen como `dataURL` en el campo `image`.
 Los mensajes de texto usan el campo `text`.
