@@ -58,10 +58,6 @@ Para que los chats sean realmente privados, pega estas reglas en
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isParticipant(conversationId) {
-      return conversationId.split('_').hasAny(request.auth.uid);
-    }
-
     match /users/{userId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == userId;
@@ -77,18 +73,26 @@ service cloud.firestore {
     }
 
     match /conversations/{conversationId} {
-      allow read, update: if request.auth != null && isParticipant(conversationId);
+      allow read, update: if request.auth != null &&
+        resource.data.participants.hasAny([request.auth.uid]);
       allow create: if request.auth != null;
       allow delete: if false;
     }
 
     match /conversations/{conversationId}/messages/{messageId} {
-      allow read, create: if request.auth != null && isParticipant(conversationId);
+      allow read, create: if request.auth != null &&
+        get(/databases/$(database)/documents/conversations/$(conversationId))
+          .data.participants.hasAny([request.auth.uid]);
       allow update, delete: if false;
     }
   }
 }
 ```
+
+> Importante: la lectura de `conversations` y `messages` se valida contra el campo
+> `participants` (coincide con las consultas `array-contains` del cliente). Si las
+> reglas validan por el id de la conversación, Firestore rechaza las consultas
+> (`permission-denied`) y la lista de conversaciones queda vacía.
 
 ## Despliegue local
 
