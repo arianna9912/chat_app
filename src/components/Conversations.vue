@@ -501,6 +501,11 @@ const openConversation = (c) => {
 const startWith = async (u) => {
   const id = getConversationId(currentUser.uid, u.uid)
   addOpen.value = false
+  await setDoc(
+    doc(db, 'conversations', id),
+    { participants: arrayUnion(currentUser.uid, u.uid) },
+    { merge: true }
+  )
   markRead(id)
   emit('open', { id, other: { name: u.displayName, photo: u.photoURL || '' } })
 }
