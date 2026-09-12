@@ -257,6 +257,7 @@ onMounted(() => {
       })
       sortable.sort((a, b) => (b.lastAt?.toMillis?.() ?? 0) - (a.lastAt?.toMillis?.() ?? 0))
       conversations.value = sortable
+      console.log('dbg:convs', sortable.map((s) => s.id.slice(0, 10) + '|' + JSON.stringify(s.unread || {}) + '|act:' + props.activeId.slice(0, 6)).join(' ; '))
 
       if (!convBaseline) {
         convBaseline = true
