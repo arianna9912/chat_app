@@ -64,8 +64,9 @@
 
 <script setup>
 import { ref, nextTick } from 'vue'
-import { collection, doc, Timestamp, writeBatch } from 'firebase/firestore'
+import { collection, doc, Timestamp, writeBatch, increment } from 'firebase/firestore'
 import { auth, db } from '../firebase'
+import { otherParticipantUid } from '../utils/chat'
 
 const props = defineProps({
   conversationId: { type: String, required: true },
@@ -103,6 +104,7 @@ const send = async () => {
     batch.update(doc(db, 'conversations', props.conversationId), {
       lastMessage: text,
       lastAt: Timestamp.fromDate(new Date()),
+      [`unread.${otherParticipantUid(props.conversationId, user.uid)}`]: increment(1),
     })
 
     await batch.commit()
@@ -141,6 +143,7 @@ const handleImage = async (e) => {
       batch.update(doc(db, 'conversations', props.conversationId), {
         lastMessage: '📷 Foto',
         lastAt: Timestamp.fromDate(new Date()),
+        [`unread.${otherParticipantUid(props.conversationId, user.uid)}`]: increment(1),
       })
 
       await batch.commit()

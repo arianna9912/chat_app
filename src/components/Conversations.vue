@@ -171,7 +171,10 @@
         <div class="conv-body">
           <div class="conv-top">
             <span class="conv-name">{{ otherName(c) }}</span>
-            <span class="conv-time">{{ relTime(c.lastAt) }}</span>
+            <span v-if="(c.unread?.[currentUser.uid] || 0) > 0" class="conv-badge">
+              {{ c.unread[currentUser.uid] }}
+            </span>
+            <span v-else class="conv-time">{{ relTime(c.lastAt) }}</span>
           </div>
           <div class="conv-bottom">
             <span class="conv-preview">{{ lastPreview(c) }}</span>
@@ -191,11 +194,12 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { db, auth } from '../firebase'
 import {
-  collection, query, onSnapshot, doc, setDoc, getDoc, deleteDoc,
+  collection, query, onSnapshot, doc, setDoc, getDoc, deleteDoc, updateDoc,
   serverTimestamp, arrayUnion, arrayRemove, where,
 } from 'firebase/firestore'
 import { signOut } from 'firebase/auth'
 import { getConversationId, otherParticipantUid } from '../utils/chat'
+import { notify, beep, ensurePermission } from '../utils/notify'
 import Logo from './Logo.vue'
 import PremiumAvatar from './PremiumAvatar.vue'
 
@@ -230,39 +234,89 @@ let unsubSent = null
 let unsubAccepted = null
 let unsubAcceptedIn = null
 let closeHandler = null
+let convBaseline = false
+let reqBaseline = false
+const unreadCache = {}
 
 onMounted(() => {
   unsubUsers = onSnapshot(query(collection(db, 'users')), (snap) => {
     users.value = snap.docs
       .map((d) => d.data())
       .filter((u) => u.uid !== currentUser.uid)
-  })
+  }, (e) => console.error('denied:users', e.code))
 
   unsubConvs = onSnapshot(
     query(collection(db, 'conversations'), where('participants', 'array-contains', currentUser.uid)),
     (snap) => {
-      conversations.value = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .sort((a, b) => (b.lastAt?.toMillis?.() ?? 0) - (a.lastAt?.toMillis?.() ?? 0))
-    }
+      const sortable = []
+      const cache = {}
+      snap.forEach((d) => {
+        const data = d.data()
+        cache[d.id] = data
+        sortable.push({ id: d.id, ...data })
+      })
+      sortable.sort((a, b) => (b.lastAt?.toMillis?.() ?? 0) - (a.lastAt?.toMillis?.() ?? 0))
+      conversations.value = sortable
+
+      if (!convBaseline) {
+        convBaseline = true
+        snap.forEach((d) => {
+          unreadCache[d.id] = d.data()?.unread?.[currentUser.uid] || 0
+        })
+        return
+      }
+
+      snap.forEach((d) => {
+        const data = d.data()
+        const n = data.unread?.[currentUser.uid] || 0
+        const prev = unreadCache[d.id] || 0
+        unreadCache[d.id] = n
+        if (n > prev && d.id !== props.activeId) {
+          const uid = otherParticipantUid(d.id, currentUser.uid)
+          const other = users.value.find((u) => u.uid === uid)
+          const body = typeof data.lastMessage === 'string' ? data.lastMessage : '📷 Foto'
+          notify(`Nuevo mensaje de ${other?.displayName || ''}`, body)
+          beep()
+        }
+      })
+
+      if (props.activeId && (cache[props.activeId]?.unread?.[currentUser.uid] || 0) > 0) {
+        markRead(props.activeId)
+      }
+    },
+    (e) => console.error('denied:convs', e.code)
   )
 
   unsubMe = onSnapshot(doc(db, 'users', currentUser.uid), (d) => {
     myFriends.value = d.data()?.friends || []
-  })
+  }, (e) => console.error('denied:me', e.code))
 
   unsubIncoming = onSnapshot(
     query(collection(db, 'requests'), where('to', '==', currentUser.uid), where('status', '==', 'pending')),
     (snap) => {
       incomingReq.value = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-    }
+      if (!reqBaseline) {
+        reqBaseline = true
+        return
+      }
+      snap.docChanges().forEach((ch) => {
+        if (ch.type === 'added') {
+          const r = ch.doc.data()
+          const other = users.value.find((u) => u.uid === r.from)
+          notify('Nueva solicitud de chat', `${other?.displayName || 'Alguien'} quiere chatear contigo`)
+          beep()
+        }
+      })
+    },
+    (e) => console.error('denied:incoming', e.code)
   )
 
   unsubSent = onSnapshot(
     query(collection(db, 'requests'), where('from', '==', currentUser.uid), where('status', '==', 'pending')),
     (snap) => {
       sentReq.value = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-    }
+    },
+    (e) => console.error('denied:sent', e.code)
   )
 
   unsubAccepted = onSnapshot(
@@ -270,7 +324,8 @@ onMounted(() => {
     (snap) => {
       acceptedOut.value = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
       mergeAccepted()
-    }
+    },
+    (e) => console.error('denied:accOut', e.code)
   )
 
   unsubAcceptedIn = onSnapshot(
@@ -278,7 +333,8 @@ onMounted(() => {
     (snap) => {
       acceptedIn.value = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
       mergeAccepted()
-    }
+    },
+    (e) => console.error('denied:accIn', e.code)
   )
 
   closeHandler = (e) => {
@@ -286,6 +342,8 @@ onMounted(() => {
     if (!e.target.closest('.sb-search-row')) addOpen.value = false
   }
   document.addEventListener('click', closeHandler)
+
+  setTimeout(() => ensurePermission(), 1500)
 })
 
 onUnmounted(() => {
@@ -301,6 +359,10 @@ onUnmounted(() => {
 
 const mergeAccepted = () => {
   acceptedReq.value = [...acceptedIn.value, ...acceptedOut.value]
+}
+
+const markRead = (id) => {
+  updateDoc(doc(db, 'conversations', id), { [`unread.${currentUser.uid}`]: 0 }).catch(() => {})
 }
 
 const userOf = (uid) => users.value.find((u) => u.uid === uid)
@@ -428,6 +490,7 @@ const relTime = (ts) => {
 }
 
 const openConversation = (c) => {
+  markRead(c.id)
   const other = users.value.find((u) => u.uid === otherParticipantUid(c.id, currentUser.uid))
   emit('open', {
     id: c.id,
@@ -447,6 +510,7 @@ const startWith = async (u) => {
     })
   }
   addOpen.value = false
+  markRead(id)
   emit('open', { id, other: { name: u.displayName, photo: u.photoURL || '' } })
 }
 
@@ -850,6 +914,21 @@ const logout = async () => {
 .conv-time {
   font-size: 10px;
   color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+
+.conv-badge {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
 }
 
