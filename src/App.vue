@@ -31,7 +31,9 @@
       @open-drawer="mobileOpen = true"
     />
     <div v-else class="app-placeholder">
-      <i class="mdi mdi-chat-plus-outline"></i>
+      <button class="app-placeholder-btn" @click="mobileOpen = true">
+        <i class="mdi mdi-account-plus-outline"></i>
+      </button>
       <p>Selecciona un usuario o una conversación</p>
       <p class="app-placeholder-sub">para empezar a chatear en privado</p>
     </div>
@@ -167,6 +169,25 @@ onAuthStateChanged(auth, async (user) => {
 .app-placeholder-sub {
   font-size: 13px;
   margin: 4px 0 0;
+}
+
+.app-placeholder-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border: none;
+  border-radius: 16px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(var(--primary), 0.35);
+}
+
+.app-placeholder-btn:hover {
+  opacity: 0.9;
 }
 
 @media (min-width: 768px) {
