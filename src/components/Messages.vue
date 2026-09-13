@@ -9,7 +9,7 @@
         <i class="mdi mdi-menu"></i>
       </button>
 
-      <PremiumAvatar :src="other.photo || ''" :name="other.name" size="md" online />
+      <PremiumAvatar :src="other.photo || ''" :name="other.name" size="md" />
 
       <div class="cm-header-info">
         <h2>{{ other.name }}</h2>

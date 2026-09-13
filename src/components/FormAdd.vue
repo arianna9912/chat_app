@@ -129,38 +129,63 @@ const handleImage = async (e) => {
   e.target.value = ''
   if (!file || !props.conversationId) return
 
-  const reader = new FileReader()
-  reader.onload = async () => {
-    try {
-      const user = auth.currentUser
-      const otherUid = otherParticipantUid(props.conversationId, user.uid)
-      const convRef = doc(db, 'conversations', props.conversationId)
+  try {
+    const dataURL = await resizeImage(file)
+    if (!dataURL) return
+    const user = auth.currentUser
+    const otherUid = otherParticipantUid(props.conversationId, user.uid)
+    const convRef = doc(db, 'conversations', props.conversationId)
 
-      await setDoc(convRef, { participants: arrayUnion(user.uid, otherUid) }, { merge: true })
+    await setDoc(convRef, { participants: arrayUnion(user.uid, otherUid) }, { merge: true })
 
-      const batch = writeBatch(db)
-      const msgRef = doc(collection(db, 'conversations', props.conversationId, 'messages'))
-      batch.set(msgRef, {
-        image: reader.result,
-        text: '',
-        time: Timestamp.fromDate(new Date()),
-        uid: user.uid,
-        displayName: user.displayName,
-      })
+    const batch = writeBatch(db)
+    const msgRef = doc(collection(db, 'conversations', props.conversationId, 'messages'))
+    batch.set(msgRef, {
+      image: dataURL,
+      text: '',
+      time: Timestamp.fromDate(new Date()),
+      uid: user.uid,
+      displayName: user.displayName,
+    })
 
-      batch.update(convRef, {
-        lastMessage: '📷 Foto',
-        lastAt: Timestamp.fromDate(new Date()),
-        [`unread.${otherUid}`]: increment(1),
-      })
+    batch.update(convRef, {
+      lastMessage: '📷 Foto',
+      lastAt: Timestamp.fromDate(new Date()),
+      [`unread.${otherUid}`]: increment(1),
+    })
 
-      await batch.commit()
-    } catch (error) {
-      console.log(error)
-    }
+    await batch.commit()
+  } catch (error) {
+    console.log(error)
   }
-  reader.readAsDataURL(file)
 }
+
+const resizeImage = (file) =>
+  new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const img = new Image()
+      img.onload = () => {
+        const MAX = 1000
+        const scale = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight))
+        const width = Math.max(1, Math.round(img.naturalWidth * scale))
+        const height = Math.max(1, Math.round(img.naturalHeight * scale))
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return resolve(reader.result)
+        ctx.fillStyle = '#fff'
+        ctx.fillRect(0, 0, width, height)
+        ctx.drawImage(img, 0, 0, width, height)
+        resolve(canvas.toDataURL('image/jpeg', 0.75))
+      }
+      img.onerror = () => resolve(null)
+      img.src = reader.result
+    }
+    reader.onerror = () => resolve(null)
+    reader.readAsDataURL(file)
+  })
 
 const toggleRecording = () => {
   isRecording.value = !isRecording.value
@@ -299,7 +324,13 @@ const toggleRecording = () => {
 }
 
 .ci-send {
+  background: var(--primary);
   color: #fff;
+}
+
+.ci-send:hover {
+  background: var(--primary-hover);
+  box-shadow: 0 4px 20px rgba(255, 106, 0, 0.35);
 }
 
 .ci-send .mdi {
