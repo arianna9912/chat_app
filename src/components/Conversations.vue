@@ -502,19 +502,18 @@ const startWith = async (u) => {
   const id = getConversationId(currentUser.uid, u.uid)
   addOpen.value = false
   const convRef = doc(db, 'conversations', id)
-  setDoc(convRef, { participants: arrayUnion(currentUser.uid, u.uid) }, { merge: true })
-    .then((res) => {
-      markRead(id)
-    })
-    .catch((e) => {
-      console.error('startWith:conv', e.code, e.message)
-      deleteDoc(convRef)
-        .then(() =>
-          setDoc(convRef, { participants: arrayUnion(currentUser.uid, u.uid) }, { merge: true })
-        )
-        .then(() => markRead(id))
-        .catch((e2) => console.error('startWith:repair', e2.code, e2.message))
-    })
+  try {
+    await setDoc(convRef, { participants: arrayUnion(currentUser.uid, u.uid) }, { merge: true })
+  } catch (e) {
+    console.error('startWith:conv', e.code, e.message)
+    try {
+      await deleteDoc(convRef)
+      await setDoc(convRef, { participants: arrayUnion(currentUser.uid, u.uid) }, { merge: true })
+    } catch (e2) {
+      console.error('startWith:repair', e2.code, e2.message)
+    }
+  }
+  markRead(id)
   emit('open', { id, other: { name: u.displayName, photo: u.photoURL || '' } })
 }
 
