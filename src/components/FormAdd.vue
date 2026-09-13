@@ -6,12 +6,6 @@
       <button class="ci-attach-btn" @click="pickImage">
         <i class="mdi mdi-image-outline"></i>
       </button>
-      <button class="ci-attach-btn">
-        <i class="mdi mdi-camera-outline"></i>
-      </button>
-      <button class="ci-attach-btn" @click="toggleRecording">
-        <i class="mdi mdi-microphone"></i>
-      </button>
     </div>
 
     <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="handleImage" />
@@ -56,14 +50,14 @@
     <!-- Recording indicator -->
     <div v-if="isRecording" class="ci-recording">
       <span class="ci-rec-dot"></span>
-      <span class="ci-rec-text">Grabando</span>
-      <span class="ci-rec-time">0:02</span>
+      <span class="ci-rec-text">Grabando · toca para terminar</span>
+      <span class="ci-rec-time">{{ recLabel }}</span>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, computed, onUnmounted } from 'vue'
 import { collection, doc, Timestamp, writeBatch, setDoc, increment, arrayUnion } from 'firebase/firestore'
 import { auth, db } from '../firebase'
 import { otherParticipantUid } from '../utils/chat'
@@ -75,8 +69,24 @@ const props = defineProps({
 const message = ref('')
 const attachOpen = ref(false)
 const isRecording = ref(false)
+const recTime = ref(0)
 const taRef = ref(null)
 const fileInput = ref(null)
+
+const MAX_REC_MS = 30000
+
+const recLabel = computed(() => {
+  const s = Math.floor(recTime.value / 1000)
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+})
+
+const recState = {
+  media: null,
+  recorder: null,
+  chunks: [],
+  timer: null,
+  startedAt: 0,
+}
 
 const autosize = () => {
   const ta = taRef.value
@@ -188,13 +198,107 @@ const resizeImage = (file) =>
   })
 
 const toggleRecording = () => {
-  isRecording.value = !isRecording.value
   if (isRecording.value) {
-    setTimeout(() => {
-      isRecording.value = false
-    }, 2000)
+    stopRecording()
+    return
+  }
+  startRecording()
+}
+
+const startRecording = async () => {
+  if (!props.conversationId) return
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : ''
+    const recorder = new MediaRecorder(stream, {
+      ...(mime ? { mimeType: mime } : {}),
+      audioBitsPerSecond: 24000,
+    })
+    const chunks = []
+    recorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) chunks.push(e.data)
+    }
+    recorder.onstop = () => {
+      recState.media?.getTracks().forEach((t) => t.stop())
+      const duration = Math.max(1, Math.round((Date.now() - recState.startedAt) / 1000))
+      const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' })
+      sendAudio(blob, duration)
+    }
+    recState.media = stream
+    recState.recorder = recorder
+    recState.chunks = chunks
+    recState.startedAt = Date.now()
+    recorder.start()
+    isRecording.value = true
+    recTime.value = 0
+    recState.timer = setInterval(() => {
+      recTime.value = Date.now() - recState.startedAt
+      if (recTime.value >= MAX_REC_MS) {
+        stopRecording()
+      }
+    }, 250)
+  } catch (error) {
+    console.log(error)
+    isRecording.value = false
   }
 }
+
+const stopRecording = () => {
+  clearInterval(recState.timer)
+  recState.timer = null
+  isRecording.value = false
+  try {
+    if (recState.recorder && recState.recorder.state !== 'inactive') {
+      recState.recorder.stop()
+    }
+  } catch (error) {
+    console.log(error)
+  }
+}
+
+const sendAudio = (blob, duration) => {
+  if (!props.conversationId) return
+  const reader = new FileReader()
+  reader.onload = async () => {
+    try {
+      const audio = reader.result
+      if (typeof audio !== 'string' || audio.length > 900000) {
+        console.log('audio excede limite', audio.length)
+        return
+      }
+      const user = auth.currentUser
+      const otherUid = otherParticipantUid(props.conversationId, user.uid)
+      const convRef = doc(db, 'conversations', props.conversationId)
+      await setDoc(convRef, { participants: arrayUnion(user.uid, otherUid) }, { merge: true })
+      const batch = writeBatch(db)
+      const msgRef = doc(collection(db, 'conversations', props.conversationId, 'messages'))
+      batch.set(msgRef, {
+        audio,
+        duration,
+        text: '',
+        time: Timestamp.fromDate(new Date()),
+        uid: user.uid,
+        displayName: user.displayName,
+      })
+      batch.update(convRef, {
+        lastMessage: '🎤 Nota de voz',
+        lastAt: Timestamp.fromDate(new Date()),
+        [`unread.${otherUid}`]: increment(1),
+      })
+      await batch.commit()
+    } catch (error) {
+      console.log(error)
+    }
+  }
+  reader.readAsDataURL(blob)
+}
+
+onUnmounted(() => {
+  clearInterval(recState.timer)
+  recState.media?.getTracks().forEach((t) => t.stop())
+})
 </script>
 
 <style scoped>

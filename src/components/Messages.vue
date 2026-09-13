@@ -21,12 +21,6 @@
 
       <div class="cm-header-actions">
         <button class="icon-btn">
-          <i class="mdi mdi-phone-outline"></i>
-        </button>
-        <button class="icon-btn">
-          <i class="mdi mdi-video-outline"></i>
-        </button>
-        <button class="icon-btn">
           <i class="mdi mdi-dots-horizontal"></i>
         </button>
       </div>
@@ -191,11 +185,6 @@ onUnmounted(() => {
 @media (max-width: 767px) {
   .cm-menu-btn {
     display: flex;
-  }
-
-  .cm-header-actions .icon-btn:nth-child(2),
-  .cm-header-actions .icon-btn:nth-child(3) {
-    display: none;
   }
 }
 
