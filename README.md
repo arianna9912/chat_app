@@ -20,24 +20,6 @@ En **Firebase Console → Authentication → Sign-in method**, asegúrate de ten
 - **Google**
 - **Email/Password** (necesario para el login con email)
 
-## Arquitectura en Firestore
-
-```
-users/{uid}                          → perfil público de cada usuario
-  { uid, displayName, email, photoURL, lastSeen }
-
-requests/{fromUid}_{toUid}           → solicitud de chat entre dos usuarios
-  { from, to, status: 'pending'|'accepted', createdAt }
-
-conversations/{conversationId}       → una conversación por pareja de usuarios
-  { participants: [uidA, uidB], lastMessage, lastAt, unread.{uid} }
-  // conversationId = min(uidA, uidB) + "_" + max(uidA, uidB), es determinístico
-  // se crea automáticamente al abrir el chat
-
-conversations/{conversationId}/messages/{messageId}
-  { text?, image?, time, uid, displayName }
-```
-
 Flujo de amistad:
 1. Todos los usuarios registrados aparecen en el botón `+` (o con el buscador).
 2. Con el botón **Solicitar** se envía una solicitud de chat (doc en `requests/`).
@@ -45,20 +27,6 @@ Flujo de amistad:
 4. Al aceptar, la otra persona pasa a la lista de **Amigos** y se abre la conversación
    (el documento de la conversación se crea automáticamente al abrirla, aunque aún
    no haya mensajes, y aparece en la lista **Conversaciones**).
-
-```
-
-> Importante: la lectura de `conversations` y `messages` se valida contra el campo
-> `participants` (coincide con las consultas `array-contains` del cliente). Si las
-> reglas validan por el id de la conversación, Firestore rechaza las consultas
-> (`permission-denied`) y la lista de conversaciones queda vacía.
-
-## Despliegue local
-
-```bash
-npm install
-npm run dev
-```
 
 ## Stack
 
