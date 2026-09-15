@@ -53,6 +53,10 @@
       <span class="ci-rec-text">Grabando · toca para terminar</span>
       <span class="ci-rec-time">{{ recLabel }}</span>
     </div>
+    <!-- Voice notice -->
+    <div v-if="voiceNotice" class="ci-recording">
+      <span class="ci-rec-text">{{ voiceNotice }}</span>
+    </div>
   </div>
 </template>
 
@@ -70,6 +74,7 @@ const message = ref('')
 const attachOpen = ref(false)
 const isRecording = ref(false)
 const recTime = ref(0)
+const voiceNotice = ref('')
 const taRef = ref(null)
 const fileInput = ref(null)
 
@@ -86,6 +91,7 @@ const recState = {
   chunks: [],
   timer: null,
   startedAt: 0,
+  type: 'audio/webm',
 }
 
 const autosize = () => {
@@ -223,7 +229,7 @@ const startRecording = async () => {
     recorder.onstop = () => {
       recState.media?.getTracks().forEach((t) => t.stop())
       const duration = Math.max(1, Math.round((Date.now() - recState.startedAt) / 1000))
-      const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' })
+      const blob = new Blob(chunks, { type: recState.type })
       sendAudio(blob, duration)
     }
     recState.media = stream
@@ -231,6 +237,7 @@ const startRecording = async () => {
     recState.chunks = chunks
     recState.startedAt = Date.now()
     recorder.start()
+    recState.type = recorder.mimeType || mime || 'audio/webm'
     isRecording.value = true
     recTime.value = 0
     recState.timer = setInterval(() => {
@@ -265,7 +272,10 @@ const sendAudio = (blob, duration) => {
     try {
       const audio = reader.result
       if (typeof audio !== 'string' || audio.length > 900000) {
-        console.log('audio excede limite', audio.length)
+        voiceNotice.value = 'La nota es demasiado larga para enviarse'
+        setTimeout(() => {
+          voiceNotice.value = ''
+        }, 4000)
         return
       }
       const user = auth.currentUser
