@@ -1,6 +1,6 @@
-# Friendzy — Chat privado
+# Friendzy 
 
-Chat privado 1-a-1 con el diseño **blanco y naranja** de "Friendzy" (login split + chat moderno), construido con **Vue 3**, **Vite** y **Firebase (Auth + Firestore)**.
+Chat, construido con **Vue 3**, **Vite** y **Firebase (Auth + Firestore)**.
 
 ## Funcionalidades
 
@@ -46,50 +46,6 @@ Flujo de amistad:
    (el documento de la conversación se crea automáticamente al abrirla, aunque aún
    no haya mensajes, y aparece en la lista **Conversaciones**).
 
-Los mensajes con imagen guardan la imagen como `dataURL` en el campo `image`.
-Los mensajes de texto usan el campo `text`.
-
-El `conversationId` se calcula con `min(uidA, uidB) + "_" + max(uidA, uidB)`,
-por lo que cada pareja de usuarios tiene siempre la misma conversación.
-
-## Reglas de seguridad recomendadas (Firestore)
-
-Para que los chats sean realmente privados, pega estas reglas en
-**Firebase Console → Firestore → Reglas**:
-
-```js
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId;
-    }
-
-    match /requests/{requestId} {
-      allow read: if request.auth != null &&
-        (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
-      allow create: if request.auth != null &&
-        request.resource.data.from == request.auth.uid && request.resource.data.to != request.auth.uid;
-      allow update, delete: if request.auth != null &&
-        (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
-    }
-
-    match /conversations/{conversationId} {
-      allow read, update: if request.auth != null &&
-        resource.data.participants.hasAny([request.auth.uid]);
-      allow create: if request.auth != null;
-      allow delete: if false;
-    }
-
-    match /conversations/{conversationId}/messages/{messageId} {
-      allow read, create: if request.auth != null &&
-        get(/databases/$(database)/documents/conversations/$(conversationId))
-          .data.participants.hasAny([request.auth.uid]);
-      allow update, delete: if false;
-    }
-  }
-}
 ```
 
 > Importante: la lectura de `conversations` y `messages` se valida contra el campo
