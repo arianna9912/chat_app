@@ -50,7 +50,7 @@ export function ensurePermission() {
 export function notify(title, body) {
   if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
     try {
-      new Notification(title, { body, icon: '/chat_app/favicon.ico' })
+      new Notification(title, { body, icon: '/friendzy/favicon.svg' })
     } catch (e) {}
   }
 }
